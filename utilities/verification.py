@@ -1,4 +1,7 @@
-from hash_util import HashUtil
+"""Verification methods for blockchain elements."""
+
+from utilities.hash_util import HashUtil
+from wallet import Wallet
 
 
 class Verification:
@@ -20,10 +23,12 @@ class Verification:
         return True
 
     @staticmethod
-    def verify_transaction(transaction, get_balance_callback):
-        sender_balance = get_balance_callback()
-        return sender_balance >= transaction.amount
+    def verify_transaction(transaction, get_balance_callback, check_funds=True):
+        if check_funds:
+            sender_balance = get_balance_callback()
+            return sender_balance >= transaction.amount and Wallet.verify_transaction(transaction)
+        return Wallet.verify_transaction(transaction)
 
     @classmethod
     def verify_transactions(cls, open_transactions, get_balance_callback):
-        return all([cls.verify_transaction(tx, get_balance_callback) for tx in open_transactions])
+        return all([cls.verify_transaction(tx, get_balance_callback, check_funds=False) for tx in open_transactions])

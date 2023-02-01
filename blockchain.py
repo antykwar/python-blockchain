@@ -1,15 +1,12 @@
 import json
 from functools import reduce
 
-from hash_util import HashUtil
+from utilities.hash_util import HashUtil
+from utilities.verification import Verification
 from block import Block
 from transaction import Transaction
-from verification import Verification
-
-
-BLOCKCHAIN_FILE = 'blockchain.dat'
-MINING_REWARD = 10
-MINING_SENDER = 'ABYSS'
+from configuration import Configuration
+from wallet import Wallet
 
 
 class Blockchain:
@@ -42,14 +39,14 @@ class Blockchain:
 
     def load_data(self):
         try:
-            with open(BLOCKCHAIN_FILE, mode='r') as datastore:
+            with open(Configuration.BLOCKCHAIN_FILE, mode='r') as datastore:
                 file_content = datastore.readlines()
                 raw_blockchain_data = json.loads(file_content[0][:-1])
                 self.__chain = [Block(
                     index=block['index'],
                     previous_hash=block['previous_hash'],
                     transactions=[
-                        Transaction(tx['sender'], tx['recipient'], tx['amount'])
+                        Transaction(tx['sender'], tx['recipient'], tx['amount'], tx['signature'])
                         for tx in block['transactions']
                     ],
                     proof=block['proof'],
@@ -57,7 +54,7 @@ class Blockchain:
                 ) for block in raw_blockchain_data]
                 raw_open_transactions_data = json.loads(file_content[1])
                 self.__open_transactions = [
-                    Transaction(tx['sender'], tx['recipient'], tx['amount'])
+                    Transaction(tx['sender'], tx['recipient'], tx['amount'], tx['signature'])
                     for tx in raw_open_transactions_data
                 ]
         except (IOError, IndexError):
@@ -65,7 +62,7 @@ class Blockchain:
 
     def save_data(self):
         try:
-            with open(BLOCKCHAIN_FILE, mode='w') as datastore:
+            with open(Configuration.BLOCKCHAIN_FILE, mode='w') as datastore:
                 savable_blockchain = [block.get_savable_version() for block in self.__chain]
                 datastore.write(json.dumps(savable_blockchain))
                 datastore.write('\n')
@@ -111,8 +108,10 @@ class Blockchain:
         except IndexError:
             return None
 
-    def add_transaction(self, recipient, sender, amount=1.0):
-        transaction = Transaction(sender, recipient, amount)
+    def add_transaction(self, recipient, sender, amount, signature):
+        if self.hosting_node is None:
+            return False
+        transaction = Transaction(sender, recipient, amount, signature)
         if Verification.verify_transaction(transaction, self.get_balance):
             self.__open_transactions.append(transaction)
             self.save_data()
@@ -120,10 +119,15 @@ class Blockchain:
         return False
 
     def mine_block(self):
+        if self.hosting_node is None:
+            return False
         last_block = self.__chain[-1]
         proof = self.proof_of_work()
-        reward_transaction = Transaction(MINING_SENDER, self.hosting_node, MINING_REWARD)
+        reward_transaction = Transaction(Configuration.MINING_SENDER, self.hosting_node, Configuration.MINING_REWARD, '')
         copied_transactions = self.__open_transactions[:]
+        for tx in copied_transactions:
+            if not Wallet.verify_transaction(tx):
+                return False
         copied_transactions.append(reward_transaction)
         block = Block(
             index=len(self.__chain),

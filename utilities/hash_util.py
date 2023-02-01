@@ -1,3 +1,5 @@
+"""Hashing methods for blockchain elements."""
+
 import hashlib as hl
 import json
 
