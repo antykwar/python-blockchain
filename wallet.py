@@ -36,8 +36,10 @@ class Wallet:
         try:
             with open(Configuration.WALLET_FILE, mode='w') as datastore:
                 datastore.write(json.dumps({'public_key': self.public_key, 'private_key': self.private_key}))
+            return True
         except IOError:
             print('Error while saving wallet data!')
+            return False
 
     @staticmethod
     def generate_keys():

@@ -80,6 +80,8 @@ class Blockchain:
         return proof
 
     def get_balance(self):
+        if self.hosting_node is None:
+            return None
         total_sent = self.calculate_balance() + self.calculate_open_transactions()
         total_received = self.calculate_balance('recipient')
         return total_received - total_sent
@@ -120,14 +122,14 @@ class Blockchain:
 
     def mine_block(self):
         if self.hosting_node is None:
-            return False
+            return None
         last_block = self.__chain[-1]
         proof = self.proof_of_work()
         reward_transaction = Transaction(Configuration.MINING_SENDER, self.hosting_node, Configuration.MINING_REWARD, '')
         copied_transactions = self.__open_transactions[:]
         for tx in copied_transactions:
             if not Wallet.verify_transaction(tx):
-                return False
+                return None
         copied_transactions.append(reward_transaction)
         block = Block(
             index=len(self.__chain),
@@ -138,4 +140,4 @@ class Blockchain:
         self.__chain.append(block)
         self.__open_transactions = []
         self.save_data()
-        return True
+        return block
