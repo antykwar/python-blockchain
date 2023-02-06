@@ -8,9 +8,10 @@ from configuration import Configuration
 
 
 class Wallet:
-    def __init__(self):
+    def __init__(self, network_id=None):
         self.private_key = None
         self.public_key = None
+        self.network_id = network_id if network_id is not None else ''
 
     def create_keys(self):
         private_key, public_key = self.generate_keys()
@@ -19,7 +20,7 @@ class Wallet:
 
     def load_keys(self):
         try:
-            with open(Configuration.WALLET_FILE, mode='r') as datastore:
+            with open(Configuration.WALLET_FILE + str(self.network_id), mode='r') as datastore:
                 file_content = datastore.readlines()
                 raw_wallet_data = json.loads(file_content[0])
                 self.private_key = raw_wallet_data['private_key']
@@ -34,7 +35,7 @@ class Wallet:
             print('Trying to save empty wallet data!')
             return
         try:
-            with open(Configuration.WALLET_FILE, mode='w') as datastore:
+            with open(Configuration.WALLET_FILE + str(self.network_id), mode='w') as datastore:
                 datastore.write(json.dumps({'public_key': self.public_key, 'private_key': self.private_key}))
             return True
         except IOError:

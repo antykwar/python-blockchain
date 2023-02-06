@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from argparse import ArgumentParser
 
 from wallet import Wallet
 from blockchain import Blockchain
@@ -7,13 +8,15 @@ from blockchain import Blockchain
 app = Flask(__name__)
 CORS(app)
 
-wallet = Wallet()
-blockchain = Blockchain(wallet.public_key)
-
 
 @app.route('/', methods=['GET'])
 def get_ui():
     return send_from_directory('ui', 'node.html')
+
+
+@app.route('/network', methods=['GET'])
+def get_network_ui():
+    return send_from_directory('ui', 'network.html')
 
 
 @app.route('/transaction', methods=['POST'])
@@ -76,7 +79,7 @@ def create_keys():
     wallet.create_keys()
     if wallet.save_keys():
         global blockchain
-        blockchain = Blockchain(wallet.public_key)
+        blockchain = Blockchain(wallet.public_key, network_id=port)
         response = {
             'success': True,
             'public_key': wallet.public_key,
@@ -96,7 +99,7 @@ def create_keys():
 def load_keys():
     if wallet.load_keys():
         global blockchain
-        blockchain = Blockchain(wallet.public_key)
+        blockchain = Blockchain(wallet.public_key, network_id=port)
         response = {
             'success': True,
             'public_key': wallet.public_key,
@@ -170,5 +173,144 @@ def get_open_transactions():
     return jsonify(response), 200
 
 
+@app.route('/node', methods=['POST'])
+def add_node():
+    if not request.is_json or not request.get_json():
+        response = {
+            'success': False,
+            'message': 'No input data!'
+        }
+        return jsonify(response), 400
+    data = request.get_json()
+    if 'node' not in data:
+        response = {
+            'success': False,
+            'message': 'Required data is missing!'
+        }
+        return jsonify(response), 400
+    node = data['node']
+    blockchain.add_peer_node(node)
+    response = {
+        'success': True,
+        'message': 'Node added successfully!',
+        'nodes': blockchain.get_peer_nodes()
+    }
+    return jsonify(response), 200
+
+
+@app.route('/node/<node_url>', methods=['DELETE'])
+def remove_node(node_url):
+    if not node_url:
+        response = {
+            'success': False,
+            'message': 'No node found!'
+        }
+        return jsonify(response), 400
+    blockchain.remove_peer_node(node_url)
+    response = {
+        'success': True,
+        'message': 'Node removed successfully!',
+        'nodes': blockchain.get_peer_nodes()
+    }
+    return jsonify(response), 200
+
+
+@app.route('/nodes', methods=['GET'])
+def get_nodes():
+    response = {
+        'success': True,
+        'nodes': blockchain.get_peer_nodes()
+    }
+    return jsonify(response), 200
+
+
+@app.route('/broadcast-transaction', methods=['POST'])
+def broadcast_transaction():
+    data = request.get_json()
+    if not data:
+        response = {
+            'success': False,
+            'message': 'No data found!'
+        }
+        return jsonify(response), 400
+    if 'transaction' not in data:
+        response = {
+            'success': False,
+            'message': 'Missing transaction data!'
+        }
+        return jsonify(response), 400
+    transaction = data['transaction']
+    success = blockchain.add_transaction(
+        transaction['recipient'],
+        transaction['sender'],
+        transaction['amount'],
+        transaction['signature'],
+        is_receiving=True
+    )
+    if success:
+        response = {
+            'success': True,
+            'message': 'Transaction successfully added!',
+            'transaction': {
+                'sender': transaction['sender'],
+                'recipient': transaction['recipient'],
+                'amount': transaction['amount'],
+                'signature': transaction['signature']
+            },
+        }
+        return jsonify(response), 201
+    else:
+        response = {
+            'success': False,
+            'message': 'Adding a transaction failed!'
+        }
+        return jsonify(response), 500
+
+
+@app.route('/broadcast-block', methods=['POST'])
+def broadcast_block():
+    data = request.get_json()
+    if not data:
+        response = {
+            'success': False,
+            'message': 'No data found!'
+        }
+        return jsonify(response), 400
+    if 'block' not in data:
+        response = {
+            'success': False,
+            'message': 'Missing transaction data!'
+        }
+        return jsonify(response), 400
+    block = data['block']
+    if block['index'] == blockchain.chain[-1].index + 1:
+        if blockchain.add_block(block):
+            response = {
+                'success': True,
+                'message': 'Block successfully added!'
+            }
+            return jsonify(response), 201
+        else:
+            response = {
+                'success': False,
+                'message': 'Block seems invalid!'
+            }
+            return jsonify(response), 500
+    elif block['index'] > blockchain.chain[-1].index:
+        pass
+    else:
+        response = {
+            'success': False,
+            'message': 'Your blockchain is shorter than expected, block not added!'
+        }
+        return jsonify(response), 409
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    parser = ArgumentParser()
+    parser.add_argument('-p', '--port', type=int, default=5000)
+    args = parser.parse_args()
+    port = args.port
+    wallet = Wallet(network_id=port)
+    blockchain = Blockchain(wallet.public_key, network_id=port)
+    app.run(host='0.0.0.0', port=port)
