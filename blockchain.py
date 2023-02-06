@@ -13,6 +13,7 @@ from wallet import Wallet
 class Blockchain:
     def __init__(self, hosting_node_id, network_id=None):
         self.hosting_node = hosting_node_id
+        self.resolve_conflicts = False
         self.network_id = network_id if network_id is not None else ''
         self.chain = [Block(
             index=0,
@@ -195,7 +196,8 @@ class Blockchain:
                 response = requests.post(url, json={'block': block.get_savable_version()})
                 if response.status_code in [400, 500]:
                     print('Block declined, needs resolving')
-                    return False
+                if response.status_code in [409]:
+                    self.resolve_conflicts = True
             except requests.exceptions.ConnectionError:
                 continue
         return True
@@ -211,6 +213,36 @@ class Blockchain:
                         self.__open_transactions.remove(open_transaction)
                     except ValueError:
                         print('Item already removed!')
+
+    def resolve(self):
+        winner_chain = self.chain
+        replace = False
+        for node in self.__peer_nodes:
+            url = f'http://{node}/chain'
+            try:
+                response = requests.get(url)
+                node_chain = response.json()
+                node_chain = [Block(
+                    block['index'],
+                    block['previous_hash'],
+                    [Transaction(tx['sender'], tx['recipient'], tx['amount'], tx['signature'])
+                     for tx in block['transactions']],
+                    block['proof'],
+                    block['timestamp']
+                ) for block in node_chain['chain']]
+                node_chain_length = len(node_chain)
+                local_chain_length = len(winner_chain)
+                if node_chain_length > local_chain_length and Verification.verify_chain(node_chain):
+                    winner_chain = node_chain
+                    replace = True
+            except requests.exceptions.ConnectionError:
+                continue
+        self.resolve_conflicts = False
+        self.chain = winner_chain
+        if replace:
+            self.__open_transactions = []
+        self.save_data()
+        return replace
 
     def add_peer_node(self, node):
         self.__peer_nodes.add(node)

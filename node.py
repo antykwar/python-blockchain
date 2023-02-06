@@ -135,6 +135,12 @@ def get_balance():
 
 @app.route('/mine', methods=['POST'])
 def mine():
+    if blockchain.resolve_conflicts:
+        response = {
+            'success': False,
+            'message': 'Resolve conflicts first! Block not added!'
+        }
+        return jsonify(response), 409
     block = blockchain.mine_block()
     if block is not None:
         response = {
@@ -151,6 +157,21 @@ def mine():
             'wallet_set_up': wallet.public_key is not None
         }
         return jsonify(response), 500
+
+
+@app.route('/resolve-conflicts', methods=['POST'])
+def resolve_conflicts():
+    if blockchain.resolve():
+        response = {
+            'success': True,
+            'message': 'Chain was replaced!',
+        }
+    else:
+        response = {
+            'success': True,
+            'message': 'Local chain is kept!',
+        }
+    return jsonify(response), 200
 
 
 @app.route('/chain', methods=['GET'])
@@ -295,9 +316,14 @@ def broadcast_block():
                 'success': False,
                 'message': 'Block seems invalid!'
             }
-            return jsonify(response), 500
+            return jsonify(response), 409
     elif block['index'] > blockchain.chain[-1].index:
-        pass
+        response = {
+            'success': False,
+            'message': 'Blockchain differs from local blockchain, block not added!'
+        }
+        blockchain.resolve_conflicts = True
+        return jsonify(response), 409
     else:
         response = {
             'success': False,
